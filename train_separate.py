@@ -114,15 +114,9 @@ save_dir.mkdir(parents=True)# Replace with your actual directory
 logger = MetricLogger(save_dir)
 
 # Hyperparameters
-learning_rate = 0.01
+learning_rate = 0.0005
 gamma = 0.99        # Discount factor
 num_episodes = 40000 # Total number of episodes
-
-epsilon_start = 0.6
-epsilon_final = 0.01
-epsilon_decay = 50000
-
-epsilon_by_frame = lambda frame_idx: epsilon_final + (epsilon_start - epsilon_final) * math.exp(-1. * frame_idx / epsilon_decay)
 
 
 # Environment setup
@@ -161,30 +155,28 @@ for episode in range(num_episodes):
     rewards = []
     masks = []
     entropy = 0
-    for steps in range(10000): 
-        epsilon = epsilon_by_frame(episode * 100 + steps)
+    for steps in range(1000): 
         policy = actor_model(state)
+
         value = critic_model(state)
         m = Categorical(policy)
-        if random.random() > epsilon:
-            # Follow the policy
-            action = policy.argmax()
-        else:
-        #     # Take a random action
-            action = torch.tensor([env.action_space.sample()], dtype=torch.int)
+
+        action = m.sample()
         next_state, reward, done, trun, info = env.step(action.item())
         # Process next state and compute losses
-        next_state = np.array(next_state)
+        next_state = np.array(next_state)      
         next_state = torch.tensor(next_state, dtype=torch.float32).unsqueeze(0)
-
         log_prob = m.log_prob(action)
         entropy += m.entropy().mean()
+        logger.log_step(reward)  # Log the reward for each step
+
+        if steps % 20 == 0:
+            print(policy,reward)
         # print(log_prob,reward,entropy)
         log_probs.append(log_prob)
         values.append(value)
         rewards.append(torch.tensor([reward], dtype=torch.float))
         masks.append(torch.tensor([1-done], dtype=torch.float))
-        print(action, log_prob)
         state = next_state
         logger.log_step(reward)
         if info['flag_get'] == True:
@@ -202,7 +194,7 @@ for episode in range(num_episodes):
     advantage = returns - values
 
     # Update actor
-    actor_loss = -(log_probs * advantage.detach()).mean()  -  entropy
+    actor_loss = -(log_probs * advantage.detach()).mean()  - 0.01 * entropy
     actor_optimizer.zero_grad()
     actor_loss.backward()
     actor_optimizer.step()
@@ -211,11 +203,19 @@ for episode in range(num_episodes):
     critic_loss = advantage.pow(2).mean()
     critic_optimizer.zero_grad()
     critic_loss.backward()
-    critic_optimizer.step()
 
-    logger.log_episode(critic_loss.item())
-    if episode % 1000 == 0:
+
+    critic_optimizer.step()
+    # Compute average gradient
+    logger.log_episode(critic_loss.item())  # Log the episode
+    # Log episode with gradient
+    if episode % 50 == 0:
         print('Episode {}: Last reward: {}'.format(episode, reward))
         logger.record(episode, steps)
+        for name, param in actor_model.named_parameters():
+            if param.grad is not None:
+                print(f"Gradient of {name}: max: {param.grad.abs().max()}, mean: {param.grad.abs().mean()}")
+            else:
+                print(f"No gradient for {name}")
 
 env.close()

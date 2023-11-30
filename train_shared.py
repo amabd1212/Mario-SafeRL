@@ -3,7 +3,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 import numpy as np
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-from actorcritic_model import ActorCritic
+from SharedNN import ActorCritic
 
 import torch
 from torch import nn
@@ -15,7 +15,6 @@ import numpy as np
 import gym
 from gym.spaces import Box
 from gym.wrappers import FrameStack
-
 # Super Mario environment for OpenAI Gym
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
@@ -26,7 +25,7 @@ from nes_py.wrappers import JoypadSpace
 from pathlib import Path
 from metric_logger import MetricLogger
 
-import math
+import math,random,datetime
 
 
 class SkipFrame(gym.Wrapper):
@@ -92,7 +91,7 @@ else:
     env = gym_super_mario_bros.make("SuperMarioBros-1-1-v2", render_mode='human', apply_api_compatibility=True)
 
 
-env = JoypadSpace(env, SIMPLE_MOVEMENT)
+env = JoypadSpace(env,  SIMPLE_MOVEMENT)
 
 env.reset()
 next_state, reward, done, trunc, info = env.step(action=0)
@@ -108,14 +107,15 @@ else:
     env = FrameStack(env, num_stack=4)
 
 # Initialize MetricLogger
-save_dir = Path("/Users/amir0/Documents/BachelorProject/DQN/checkpoints")
-save_dir.mkdir(parents=True, exist_ok=True)  # Replace with your actual directory
+save_dir = Path("checkpoints") / datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+save_dir.mkdir(parents=True)# Replace with your actual directory
 logger = MetricLogger(save_dir)
 
 # Hyperparameters
-learning_rate = 0.001
+learning_rate = 0.0005
 gamma = 0.99        # Discount factor
-num_episodes = 1000 # Total number of episodes
+num_episodes = 40000 # Total number of episodes
+
 
 # Environment setup
 num_actions = len(SIMPLE_MOVEMENT)  # Number of possible actions
@@ -155,7 +155,8 @@ for episode in range(num_episodes):
         m = Categorical(policy)
         action = m.sample()
         next_state, reward, done,trun, info = env.step(action.item())
-
+        if steps % 20 == 0:
+            print(policy)
         next_state = np.array(next_state)
         next_state = torch.tensor(next_state, dtype=torch.float32).unsqueeze(0)
 
